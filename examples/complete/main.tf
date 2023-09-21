@@ -5,10 +5,10 @@ provider "aws" {
 # s3 bucket for terraform state
 terraform {
   backend "s3" {
-    bucket = "nw-bucket-terraform-state-nw-0562876207"
+    bucket = "nw-bucket-terraform-state-nw-05409174434"
     key = "test/terraform.tfstate"
-    region = "eu-central-1"
-    dynamodb_table = "nw-ddbtable-terraform-state"
+    region = "us-west-2"
+    dynamodb_table = "abdo-ddbtable-terraform-state"
     encrypt = true
 
   }
@@ -355,7 +355,7 @@ module "mixed_instance" {
   mixed_instances_policy = {
     instances_distribution = {
       on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = 10
+      on_demand_percentage_above_base_capacity = 2
       spot_allocation_strategy                 = "capacity-optimized"
     }
 
@@ -378,38 +378,38 @@ module "mixed_instance" {
 # With warm pool
 ################################################################################
 
-module "warm_pool" {
-  source = "../../"
+# module "warm_pool" {
+#   source = "../../"
 
-  # Autoscaling group
-  name = "warm-pool-${local.name}"
+#   # Autoscaling group
+#   name = "warm-pool-${local.name}"
 
-  vpc_zone_identifier = module.vpc.private_subnets
-  min_size            = 0
-  max_size            = 1
-  desired_capacity    = 1
+#   vpc_zone_identifier = module.vpc.private_subnets
+#   min_size            = 0
+#   max_size            = 1
+#   desired_capacity    = 1
 
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = "t3.micro"
+#   image_id      = data.aws_ami.amazon_linux.id
+#   instance_type = "t3.micro"
 
-  warm_pool = {
-    pool_state                  = "Stopped"
-    min_size                    = 1
-    max_group_prepared_capacity = 2
+#   warm_pool = {
+#     pool_state                  = "Stopped"
+#     min_size                    = 1
+#     max_group_prepared_capacity = 2
 
-    instance_reuse_policy = {
-      reuse_on_scale_in = true
-    }
-  }
+#     instance_reuse_policy = {
+#       reuse_on_scale_in = true
+#     }
+#   }
 
-  capacity_reservation_specification = {
-    capacity_reservation_target = {
-      capacity_reservation_id = aws_ec2_capacity_reservation.targeted.id
-    }
-  }
+#   capacity_reservation_specification = {
+#     capacity_reservation_target = {
+#       capacity_reservation_id = aws_ec2_capacity_reservation.targeted.id
+#     }
+#   }
 
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # EFA Network Interface
@@ -485,14 +485,14 @@ module "instance_requirements" {
           local_storage_types = ["ssd"]
           memory_gib_per_vcpu = {
             min = 2
-            max = 4
+            max = 2
           }
           memory_mib = {
             min = 2048
           },
           vcpu_count = {
             min = 2
-            max = 4
+            max = 2
           }
         }
       }
