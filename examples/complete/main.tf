@@ -31,20 +31,27 @@ data "aws_availability_zones" "available" {}
 
 locals {
   name   = basename(path.cwd)
-  region = "eu-west-1"
+  # to define the region
+  region = "eu-west-2" 
 
   vpc_cidr = "10.0.0.0/16"
   azs      = slice(data.aws_availability_zones.available.names, 0, 3)
 
   tags = {
     Example    = local.name
-    GithubRepo = "terraform-aws-autoscaling"
-    GithubOrg  = "terraform-aws-modules"
+    GithubRepo = "Qawafel-aws-autoscaling"
+    GithubOrg  = "Qawafel-aws-modules"
   }
 
   user_data = <<-EOT
     #!/bin/bash
-    echo "Hello Terraform!"
+    # Use this for your user data (script from top to bottom)
+    # install httpd (Linux 2 version)
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>Hello World from $(hostname -f)</h1>" > /var/www/html/index.html
   EOT
 }
 
@@ -63,8 +70,8 @@ module "complete" {
   ignore_desired_capacity_changes = true
 
   min_size                  = 0
-  max_size                  = 1
-  desired_capacity          = 1
+  max_size                  = 2
+  desired_capacity          = 2
   wait_for_capacity_timeout = 0
   default_instance_warmup   = 300
   health_check_type         = "EC2"
@@ -138,20 +145,23 @@ module "complete" {
         delete_on_termination = true
         encrypted             = true
         volume_size           = 20
-        volume_type           = "gp2"
+        volume_type           = "gp3"
       }
-      }, {
-      device_name = "/dev/sda1"
-      no_device   = 1
-      ebs = {
-        delete_on_termination = true
-        encrypted             = true
-        volume_size           = 30
-        volume_type           = "gp2"
-      }
-    }
+      },
+       # to add another ebs volume
+    #    {
+    #   device_name = "/dev/sda1"
+    #   no_device   = 1
+    #   ebs = {
+    #     delete_on_termination = true
+    #     encrypted             = true
+    #     volume_size           = 30
+    #     volume_type           = "gp3"
+    #   }
+    # }
   ]
 
+  # EC2 on-demande reservation "Purchasing type plan"
   capacity_reservation_specification = {
     capacity_reservation_preference = "open"
   }
@@ -235,7 +245,7 @@ module "complete" {
       max_size         = 0
       desired_capacity = 0
       recurrence       = "0 18 * * 1-5" # Mon-Fri in the evening
-      time_zone        = "Europe/Rome"
+      time_zone        = "Europe/London"
     }
 
     morning = {
@@ -244,7 +254,7 @@ module "complete" {
       desired_capacity = 1
       recurrence       = "0 7 * * 1-5" # Mon-Fri in the morning
     }
-
+    # go online on black friday
     go-offline-to-celebrate-new-year = {
       min_size         = 0
       max_size         = 0
@@ -265,26 +275,26 @@ module "complete" {
         target_value = 50.0
       }
     },
-    predictive-scaling = {
-      policy_type = "PredictiveScaling"
-      predictive_scaling_configuration = {
-        mode                         = "ForecastAndScale"
-        scheduling_buffer_time       = 10
-        max_capacity_breach_behavior = "IncreaseMaxCapacity"
-        max_capacity_buffer          = 10
-        metric_specification = {
-          target_value = 32
-          predefined_scaling_metric_specification = {
-            predefined_metric_type = "ASGAverageCPUUtilization"
-            resource_label         = "testLabel"
-          }
-          predefined_load_metric_specification = {
-            predefined_metric_type = "ASGTotalCPUUtilization"
-            resource_label         = "testLabel"
-          }
-        }
-      }
-    }
+    # predictive-scaling = {
+    #   policy_type = "PredictiveScaling"
+    #   predictive_scaling_configuration = {
+    #     mode                         = "ForecastAndScale"
+    #     scheduling_buffer_time       = 10
+    #     max_capacity_breach_behavior = "IncreaseMaxCapacity"
+    #     max_capacity_buffer          = 10
+    #     metric_specification = {
+    #       target_value = 32
+    #       predefined_scaling_metric_specification = {
+    #         predefined_metric_type = "ASGAverageCPUUtilization"
+    #         resource_label         = "testLabel"
+    #       }
+    #       predefined_load_metric_specification = {
+    #         predefined_metric_type = "ASGTotalCPUUtilization"
+    #         resource_label         = "testLabel"
+    #       }
+    #     }
+    #   }
+    # }
     request-count-per-target = {
       policy_type               = "TargetTrackingScaling"
       estimated_instance_warmup = 120
@@ -302,82 +312,82 @@ module "complete" {
 ################################################################################
 # Mixed instance policy
 ################################################################################
+### 2 another option autoscaling group
+# module "mixed_instance" {
+#   source = "../../"
 
-module "mixed_instance" {
-  source = "../../"
+#   # Autoscaling group
+#   name = "mixed-instance-${local.name}"
 
-  # Autoscaling group
-  name = "mixed-instance-${local.name}"
+#   vpc_zone_identifier = module.vpc.private_subnets
+#   min_size            = 0
+#   max_size            = 5
+#   desired_capacity    = 4
 
-  vpc_zone_identifier = module.vpc.private_subnets
-  min_size            = 0
-  max_size            = 5
-  desired_capacity    = 4
+#   image_id           = data.aws_ami.amazon_linux.id
+#   instance_type      = "t3.micro"
+#   capacity_rebalance = true
 
-  image_id           = data.aws_ami.amazon_linux.id
-  instance_type      = "t3.micro"
-  capacity_rebalance = true
+#   iam_instance_profile_arn = aws_iam_instance_profile.ssm.arn
 
-  iam_instance_profile_arn = aws_iam_instance_profile.ssm.arn
+#   initial_lifecycle_hooks = [
+#     {
+#       name                 = "ExampleStartupLifeCycleHook"
+#       default_result       = "CONTINUE"
+#       heartbeat_timeout    = 60
+#       lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
+#       # This could be a rendered data resource
+#       notification_metadata = jsonencode({ "hello" = "world" })
+#     },
+#     {
+#       name                 = "ExampleTerminationLifeCycleHook"
+#       default_result       = "CONTINUE"
+#       heartbeat_timeout    = 180
+#       lifecycle_transition = "autoscaling:EC2_INSTANCE_TERMINATING"
+#       # This could be a rendered data resource
+#       notification_metadata = jsonencode({ "goodbye" = "world" })
+#     }
+#   ]
 
-  initial_lifecycle_hooks = [
-    {
-      name                 = "ExampleStartupLifeCycleHook"
-      default_result       = "CONTINUE"
-      heartbeat_timeout    = 60
-      lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
-      # This could be a rendered data resource
-      notification_metadata = jsonencode({ "hello" = "world" })
-    },
-    {
-      name                 = "ExampleTerminationLifeCycleHook"
-      default_result       = "CONTINUE"
-      heartbeat_timeout    = 180
-      lifecycle_transition = "autoscaling:EC2_INSTANCE_TERMINATING"
-      # This could be a rendered data resource
-      notification_metadata = jsonencode({ "goodbye" = "world" })
-    }
-  ]
+#   instance_refresh = {
+#     strategy = "Rolling"
+#     preferences = {
+#       checkpoint_delay       = 600
+#       checkpoint_percentages = [35, 70, 100]
+#       instance_warmup        = 300
+#       min_healthy_percentage = 50
+#     }
+#     triggers = ["tag"]
+#   }
 
-  instance_refresh = {
-    strategy = "Rolling"
-    preferences = {
-      checkpoint_delay       = 600
-      checkpoint_percentages = [35, 70, 100]
-      instance_warmup        = 300
-      min_healthy_percentage = 50
-    }
-    triggers = ["tag"]
-  }
+#   # Mixed instances
+#   use_mixed_instances_policy = true
+#   mixed_instances_policy = {
+#     instances_distribution = {
+#       on_demand_base_capacity                  = 0
+#       on_demand_percentage_above_base_capacity = 2
+#       spot_allocation_strategy                 = "capacity-optimized"
+#     }
 
-  # Mixed instances
-  use_mixed_instances_policy = true
-  mixed_instances_policy = {
-    instances_distribution = {
-      on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = 2
-      spot_allocation_strategy                 = "capacity-optimized"
-    }
+#     override = [
+#       {
+#         instance_type     = "t3.nano"
+#         weighted_capacity = "2"
+#       },
+#       {
+#         instance_type     = "t3.medium"
+#         weighted_capacity = "1"
+#       },
+#     ]
+#   }
 
-    override = [
-      {
-        instance_type     = "t3.nano"
-        weighted_capacity = "2"
-      },
-      {
-        instance_type     = "t3.medium"
-        weighted_capacity = "1"
-      },
-    ]
-  }
-
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # With warm pool
 ################################################################################
-
+### 3 another option autoscaling group
 # module "warm_pool" {
 #   source = "../../"
 
@@ -416,300 +426,300 @@ module "mixed_instance" {
 # !Warning - This example requires the use of expensive instance types - Warning!
 ################################################################################
 
-locals {
-  efa_user_data = <<-EOT
-    # Install EFA libraries
-    curl -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz
-    tar -xf aws-efa-installer-latest.tar.gz && cd aws-efa-installer
-    ./efa_installer.sh -y --minimal
-    fi_info -p efa -t FI_EP_RDM
-    # Disable ptrace
-    sysctl -w kernel.yama.ptrace_scope=0
-  EOT
-}
+# locals {
+#   efa_user_data = <<-EOT
+#     # Install EFA libraries
+#     curl -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz
+#     tar -xf aws-efa-installer-latest.tar.gz && cd aws-efa-installer
+#     ./efa_installer.sh -y --minimal
+#     fi_info -p efa -t FI_EP_RDM
+#     # Disable ptrace
+#     sysctl -w kernel.yama.ptrace_scope=0
+#   EOT
+# }
+# ### 4 another option autoscaling group
+# module "efa" {
+#   source = "../../"
 
-module "efa" {
-  source = "../../"
+#   # Autoscaling group
+#   name = "default-${local.name}"
 
-  # Autoscaling group
-  name = "default-${local.name}"
+#   vpc_zone_identifier = module.vpc.private_subnets
+#   min_size            = 0
+#   max_size            = 1
+#   desired_capacity    = 1
 
-  vpc_zone_identifier = module.vpc.private_subnets
-  min_size            = 0
-  max_size            = 1
-  desired_capacity    = 1
+#   # aws ec2 describe-instance-types --region eu-west-1 --filters Name=network-info.efa-supported,Values=true --query "InstanceTypes[*].[InstanceType]" --output text | sort
+#   instance_type = "c5n.9xlarge"
+#   image_id      = data.aws_ami.amazon_linux.id
+#   user_data     = base64encode(local.efa_user_data)
 
-  # aws ec2 describe-instance-types --region eu-west-1 --filters Name=network-info.efa-supported,Values=true --query "InstanceTypes[*].[InstanceType]" --output text | sort
-  instance_type = "c5n.9xlarge"
-  image_id      = data.aws_ami.amazon_linux.id
-  user_data     = base64encode(local.efa_user_data)
+#   network_interfaces = [
+#     {
+#       description                 = "EFA interface example"
+#       delete_on_termination       = true
+#       device_index                = 0
+#       associate_public_ip_address = false
+#       interface_type              = "efa"
+#     }
+#   ]
 
-  network_interfaces = [
-    {
-      description                 = "EFA interface example"
-      delete_on_termination       = true
-      device_index                = 0
-      associate_public_ip_address = false
-      interface_type              = "efa"
-    }
-  ]
-
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # Instance Requirements
 ################################################################################
+### 5 another option autoscaling group based on CPU and Memory 
+# module "instance_requirements" {
+#   source = "../../"
 
-module "instance_requirements" {
-  source = "../../"
+#   # Autoscaling group
+#   name = "instance-req-${local.name}"
 
-  # Autoscaling group
-  name = "instance-req-${local.name}"
+#   vpc_zone_identifier   = module.vpc.private_subnets
+#   min_size              = 0
+#   max_size              = 5
+#   desired_capacity      = 1
+#   desired_capacity_type = "vcpu"
 
-  vpc_zone_identifier   = module.vpc.private_subnets
-  min_size              = 0
-  max_size              = 5
-  desired_capacity      = 1
-  desired_capacity_type = "vcpu"
+#   update_default_version = true
+#   image_id               = data.aws_ami.amazon_linux.id
 
-  update_default_version = true
-  image_id               = data.aws_ami.amazon_linux.id
+#   use_mixed_instances_policy = true
+#   mixed_instances_policy = {
+#     override = [
+#       {
+#         instance_requirements = {
+#           cpu_manufacturers   = ["amd"]
+#           local_storage_types = ["ssd"]
+#           memory_gib_per_vcpu = {
+#             min = 2
+#             max = 2
+#           }
+#           memory_mib = {
+#             min = 2048
+#           },
+#           vcpu_count = {
+#             min = 2
+#             max = 2
+#           }
+#         }
+#       }
+#     ]
+#   }
+#   instance_requirements = {
 
-  use_mixed_instances_policy = true
-  mixed_instances_policy = {
-    override = [
-      {
-        instance_requirements = {
-          cpu_manufacturers   = ["amd"]
-          local_storage_types = ["ssd"]
-          memory_gib_per_vcpu = {
-            min = 2
-            max = 2
-          }
-          memory_mib = {
-            min = 2048
-          },
-          vcpu_count = {
-            min = 2
-            max = 2
-          }
-        }
-      }
-    ]
-  }
-  instance_requirements = {
+#     accelerator_manufacturers = []
+#     accelerator_names         = []
+#     accelerator_types         = []
 
-    accelerator_manufacturers = []
-    accelerator_names         = []
-    accelerator_types         = []
+#     baseline_ebs_bandwidth_mbps = {
+#       min = 400
+#       max = 1600
+#     }
 
-    baseline_ebs_bandwidth_mbps = {
-      min = 400
-      max = 1600
-    }
+#     burstable_performance   = "excluded"
+#     cpu_manufacturers       = ["amazon-web-services", "amd", "intel"]
+#     excluded_instance_types = ["t*"]
+#     instance_generations    = ["current"]
+#     local_storage_types     = ["ssd", "hdd"]
 
-    burstable_performance   = "excluded"
-    cpu_manufacturers       = ["amazon-web-services", "amd", "intel"]
-    excluded_instance_types = ["t*"]
-    instance_generations    = ["current"]
-    local_storage_types     = ["ssd", "hdd"]
+#     memory_gib_per_vcpu = {
+#       min = 4
+#       max = 16
+#     }
 
-    memory_gib_per_vcpu = {
-      min = 4
-      max = 16
-    }
+#     memory_mib = {
+#       min = 24
+#       max = 128
+#     }
 
-    memory_mib = {
-      min = 24
-      max = 128
-    }
+#     network_interface_count = {
+#       min = 1
+#       max = 16
+#     }
 
-    network_interface_count = {
-      min = 1
-      max = 16
-    }
+#     vcpu_count = {
+#       min = 2
+#       max = 96
+#     }
+#   }
 
-    vcpu_count = {
-      min = 2
-      max = 96
-    }
-  }
-
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # Instance Requirements - Accelerators
 ################################################################################
+### 6 another option autoscaling group
+# module "instance_requirements_accelerators" {
+#   source = "../../"
 
-module "instance_requirements_accelerators" {
-  source = "../../"
+#   # Requires access to g or p instance types in your account http://aws.amazon.com/contact-us/ec2-request
+#   create = false
 
-  # Requires access to g or p instance types in your account http://aws.amazon.com/contact-us/ec2-request
-  create = false
+#   # Autoscaling group
+#   name = "instance-req-accelerators-${local.name}"
 
-  # Autoscaling group
-  name = "instance-req-accelerators-${local.name}"
+#   vpc_zone_identifier   = module.vpc.private_subnets
+#   min_size              = 0
+#   max_size              = 5
+#   desired_capacity      = 1
+#   desired_capacity_type = "units"
 
-  vpc_zone_identifier   = module.vpc.private_subnets
-  min_size              = 0
-  max_size              = 5
-  desired_capacity      = 1
-  desired_capacity_type = "units"
+#   update_default_version = true
+#   image_id               = data.aws_ami.amazon_linux.id
 
-  update_default_version = true
-  image_id               = data.aws_ami.amazon_linux.id
+#   use_mixed_instances_policy = true
+#   mixed_instances_policy = {
+#     override = [
+#       {
+#         instance_requirements = {
+#           memory_gib_per_vcpu = {
+#             min = 4
+#             max = 16
+#           }
+#           memory_mib = {
+#             min = 16
+#           },
+#           vcpu_count = {
+#             min = 4
+#             max = 64
+#           }
+#         }
+#       }
+#     ]
+#   }
+#   instance_requirements = {
+#     accelerator_count = {
+#       min = 1
+#       max = 8
+#     }
 
-  use_mixed_instances_policy = true
-  mixed_instances_policy = {
-    override = [
-      {
-        instance_requirements = {
-          memory_gib_per_vcpu = {
-            min = 4
-            max = 16
-          }
-          memory_mib = {
-            min = 16
-          },
-          vcpu_count = {
-            min = 4
-            max = 64
-          }
-        }
-      }
-    ]
-  }
-  instance_requirements = {
-    accelerator_count = {
-      min = 1
-      max = 8
-    }
+#     accelerator_manufacturers = ["amazon-web-services", "amd", "nvidia"]
+#     accelerator_names         = ["a100", "v100", "k80", "t4", "m60", "radeon-pro-v520"]
 
-    accelerator_manufacturers = ["amazon-web-services", "amd", "nvidia"]
-    accelerator_names         = ["a100", "v100", "k80", "t4", "m60", "radeon-pro-v520"]
+#     accelerator_total_memory_mib = {
+#       min = 4096
+#       max = 16384
+#     }
 
-    accelerator_total_memory_mib = {
-      min = 4096
-      max = 16384
-    }
+#     accelerator_types = ["gpu", "inference"]
+#     bare_metal        = "excluded"
 
-    accelerator_types = ["gpu", "inference"]
-    bare_metal        = "excluded"
+#     baseline_ebs_bandwidth_mbps = {
+#       min = 400
+#       max = 16384
+#     }
 
-    baseline_ebs_bandwidth_mbps = {
-      min = 400
-      max = 16384
-    }
+#     burstable_performance   = "excluded"
+#     cpu_manufacturers       = ["amazon-web-services", "amd", "intel"]
+#     excluded_instance_types = ["t*"]
+#     instance_generations    = ["current"]
+#     local_storage_types     = ["ssd", "hdd"]
 
-    burstable_performance   = "excluded"
-    cpu_manufacturers       = ["amazon-web-services", "amd", "intel"]
-    excluded_instance_types = ["t*"]
-    instance_generations    = ["current"]
-    local_storage_types     = ["ssd", "hdd"]
+#     memory_gib_per_vcpu = {
+#       min = 4
+#       max = 16
+#     }
 
-    memory_gib_per_vcpu = {
-      min = 4
-      max = 16
-    }
+#     memory_mib = {
+#       min = 24
+#       max = 99999 # seems to be a provider bug
+#     }
 
-    memory_mib = {
-      min = 24
-      max = 99999 # seems to be a provider bug
-    }
+#     network_interface_count = {
+#       min = 1
+#       max = 4
+#     }
 
-    network_interface_count = {
-      min = 1
-      max = 4
-    }
+#     vcpu_count = {
+#       min = 2
+#       max = 999 # seems to be a provider bug
+#     }
+#   }
 
-    vcpu_count = {
-      min = 2
-      max = 999 # seems to be a provider bug
-    }
-  }
-
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # Target Tracking Customized Metrics Policy
 ################################################################################
+### 7 another option autoscaling group
+# module "target_tracking_customized_metrics" {
+#   source = "../../"
 
-module "target_tracking_customized_metrics" {
-  source = "../../"
+#   # Autoscaling group
+#   name = "customized-metrics-${local.name}"
 
-  # Autoscaling group
-  name = "customized-metrics-${local.name}"
+#   vpc_zone_identifier = module.vpc.private_subnets
+#   min_size            = 0
+#   max_size            = 1
+#   desired_capacity    = 1
 
-  vpc_zone_identifier = module.vpc.private_subnets
-  min_size            = 0
-  max_size            = 1
-  desired_capacity    = 1
+#   image_id      = data.aws_ami.amazon_linux.id
+#   instance_type = "t3.micro"
 
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = "t3.micro"
+#   scaling_policies = {
+#     metric_math = {
+#       policy_type               = "TargetTrackingScaling"
+#       estimated_instance_warmup = 120
+#       target_tracking_configuration = {
+#         customized_metric_specification = {
+#           # https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-target-tracking-metric-math.html
+#           metrics = [
+#             {
+#               label = "Get the queue size (the number of messages waiting to be processed)"
+#               id    = "m1"
+#               metric_stat = {
+#                 metric = {
+#                   namespace   = "AWS/SQS"
+#                   metric_name = "ApproximateNumberOfMessagesVisible"
+#                   dimensions = [
+#                     {
+#                       name  = aws_sqs_queue.this.name
+#                       value = "my-queue"
+#                     }
+#                   ]
+#                 }
+#                 stat = "Sum"
+#               }
+#               return_data = false
+#             },
+#             {
+#               label = "Get the group size (the number of InService instances)"
+#               id    = "m2"
+#               metric_stat = {
+#                 metric = {
+#                   namespace   = "AWS/AutoScaling"
+#                   metric_name = "GroupInServiceInstances"
+#                   dimensions = [
+#                     {
+#                       name  = "customized-metrics-${local.name}"
+#                       value = "my-asg"
+#                     }
+#                   ]
+#                 }
+#                 stat = "Average"
+#               }
+#               return_data = true
+#             },
+#             {
+#               label       = "Calculate the backlog per instance"
+#               id          = "e1"
+#               expression  = "m1 / m2"
+#               return_data = false
+#             }
+#           ]
+#         }
+#         target_value = 100
+#       }
+#     }
+#   }
 
-  scaling_policies = {
-    metric_math = {
-      policy_type               = "TargetTrackingScaling"
-      estimated_instance_warmup = 120
-      target_tracking_configuration = {
-        customized_metric_specification = {
-          # https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-target-tracking-metric-math.html
-          metrics = [
-            {
-              label = "Get the queue size (the number of messages waiting to be processed)"
-              id    = "m1"
-              metric_stat = {
-                metric = {
-                  namespace   = "AWS/SQS"
-                  metric_name = "ApproximateNumberOfMessagesVisible"
-                  dimensions = [
-                    {
-                      name  = aws_sqs_queue.this.name
-                      value = "my-queue"
-                    }
-                  ]
-                }
-                stat = "Sum"
-              }
-              return_data = false
-            },
-            {
-              label = "Get the group size (the number of InService instances)"
-              id    = "m2"
-              metric_stat = {
-                metric = {
-                  namespace   = "AWS/AutoScaling"
-                  metric_name = "GroupInServiceInstances"
-                  dimensions = [
-                    {
-                      name  = "customized-metrics-${local.name}"
-                      value = "my-asg"
-                    }
-                  ]
-                }
-                stat = "Average"
-              }
-              return_data = true
-            },
-            {
-              label       = "Calculate the backlog per instance"
-              id          = "e1"
-              expression  = "m1 / m2"
-              return_data = false
-            }
-          ]
-        }
-        target_value = 100
-      }
-    }
-  }
-
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 ################################################################################
 # External
@@ -729,6 +739,7 @@ module "external" {
   source = "../../"
 
   # Autoscaling group
+  create = false
   name = "external-${local.name}"
 
   vpc_zone_identifier = module.vpc.private_subnets
@@ -786,6 +797,7 @@ module "default" {
   source = "../../"
 
   # Autoscaling group
+  create = false
   name = "default-${local.name}"
 
   vpc_zone_identifier = module.vpc.private_subnets
