@@ -242,16 +242,16 @@ module "complete" {
   schedules = {
     night = {
       min_size         = 0
-      max_size         = 0
-      desired_capacity = 0
+      max_size         = 2
+      desired_capacity = 2
       recurrence       = "0 18 * * 1-5" # Mon-Fri in the evening
       time_zone        = "Europe/London"
     }
 
     morning = {
       min_size         = 0
-      max_size         = 1
-      desired_capacity = 1
+      max_size         = 2
+      desired_capacity = 2
       recurrence       = "0 7 * * 1-5" # Mon-Fri in the morning
     }
     # go online on black friday
@@ -780,8 +780,8 @@ module "launch_template_only" {
 
   vpc_zone_identifier = module.vpc.private_subnets
   min_size            = 0
-  max_size            = 1
-  desired_capacity    = 1
+  max_size            = 2
+  desired_capacity    = 2
 
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
@@ -802,8 +802,8 @@ module "default" {
 
   vpc_zone_identifier = module.vpc.private_subnets
   min_size            = 0
-  max_size            = 1
-  desired_capacity    = 1
+  max_size            = 2
+  desired_capacity    = 2
 
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
@@ -820,6 +820,7 @@ module "vpc" {
   version = ">= 3.0"
   name = local.name
   cidr = local.vpc_cidr
+  # create_vpc = false
 
   azs             = local.azs
   public_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
@@ -827,6 +828,13 @@ module "vpc" {
 
   enable_dns_hostnames = true
   enable_dns_support   = true
+  # single_nat_gateway   = true
+  # reuse_nat_ips        = false
+  # enable_nat_gateway   = false
+
+  # nat_gateway_ips      = ["18.169.63.162"]
+  # external_nat_ip_ids = ["eipalloc-0e1f5ee9df681ebe1"]
+  # external_nat_ips    = ["18.169.63.162"]
 
   tags = local.tags
 }
@@ -938,7 +946,17 @@ module "alb" {
       backend_protocol = "HTTP"
       backend_port     = 80
       target_type      = "instance"
+      health_check = {
+        enabled             = true
+        interval            = 32
+        path                = "/health" 
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 30
+      }
     },
+    
   ]
 
   tags = local.tags
@@ -965,8 +983,8 @@ resource "aws_ec2_capacity_reservation" "targeted" {
 #   ]
 # }
 
-resource "aws_sqs_queue" "this" {
-  name = local.name
+# resource "aws_sqs_queue" "this" {
+#   name = local.name
 
-  tags = local.tags
-}
+#   tags = local.tags
+# }
